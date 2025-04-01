@@ -352,27 +352,27 @@ function setup_directories() {
 function deploy_vector_search() {
   echo "🚀 Deploying Vector Search infrastructure..."
   echo "   (This can take 5-180 minutes depending on the size of your dataset. Now might be a good time for coffee ☕)"
-  cd terraform
+  (
+    cd terraform
+    # Setup Terraform workspace
+    setup_terraform_workspace
+    
+    # Create terraform.tfvars file
+    create_terraform_vars
+    
+    # Run Terraform
+    echo "  🔄 Initializing Terraform..."
+    terraform init
 
-  # Setup Terraform workspace
-  setup_terraform_workspace
-  
-  # Create terraform.tfvars file
-  create_terraform_vars
-  
-  # Run Terraform
-  echo "  🔄 Initializing Terraform..."
-  terraform init
-
-  echo "  🔄 Deploying Vector Search in workspace: $DEPLOYMENT_ID"
-  echo "      (Progress will be shown below)"
-  terraform apply -target=module.vector_search --auto-approve
-  
-  # Extract output values
-  extract_terraform_outputs
-  
-  echo "  ✅ Vector Search deployment completed successfully!"
-  cd ..
+    echo "  🔄 Deploying Vector Search in workspace: $DEPLOYMENT_ID"
+    echo "      (Progress will be shown below)"
+    terraform apply -target=module.vector_search --auto-approve
+    
+    # Extract output values
+    extract_terraform_outputs
+    
+    echo "  ✅ Vector Search deployment completed successfully!"
+  )
 }
 
 #------------------------------------------------------------------------------
@@ -570,19 +570,18 @@ function add_network_specific_config() {
   
   # For private endpoints (PSC or VPC peering)
   echo "  🔄 Extracting private networking configuration..."
-  cd terraform
-  
-  # Set PSC or VPC peering flags based on endpoint type
-  if [[ "${ENDPOINT_ACCESS_TYPE}" == "private_service_connect" ]]; then
-    setup_psc_config
-  else
-    setup_vpc_peering_config
-  fi
-  
-  # Get common gRPC address for both PSC and VPC peering
-  setup_grpc_address
-  
-  cd ..
+  (
+    cd terraform
+    # Set PSC or VPC peering flags based on endpoint type
+    if [[ "${ENDPOINT_ACCESS_TYPE}" == "private_service_connect" ]]; then
+      setup_psc_config
+    else
+      setup_vpc_peering_config
+    fi
+    
+    # Get common gRPC address for both PSC and VPC peering
+    setup_grpc_address
+  )
 }
 
 #------------------------------------------------------------------------------
@@ -673,19 +672,19 @@ function build_and_push_docker_image() {
 function deploy_remaining_infrastructure() {
   echo "🚀 Deploying Kubernetes cluster and Locust resources..."
   echo "   (This can take 10-15 minutes to complete)"
-  cd terraform
+  (
+    cd terraform
+    # Select workspace and apply Terraform
+    terraform workspace select "$DEPLOYMENT_ID"
+    echo "  🔄 Deploying GKE cluster and Locust in workspace: $DEPLOYMENT_ID"
+    echo "      (Progress will be shown below)"
+    terraform apply --auto-approve
 
-  # Select workspace and apply Terraform
-  terraform workspace select "$DEPLOYMENT_ID"
-  echo "  🔄 Deploying GKE cluster and Locust in workspace: $DEPLOYMENT_ID"
-  echo "      (Progress will be shown below)"
-  terraform apply --auto-approve
-
-  # Extract deployment outputs
-  extract_deployment_outputs
-  
-  echo "  ✅ Kubernetes cluster and Locust resources deployed successfully!"
-  cd ..
+    # Extract deployment outputs
+    extract_deployment_outputs
+    
+    echo "  ✅ Kubernetes cluster and Locust resources deployed successfully!"
+  )
 }
 
 #------------------------------------------------------------------------------
@@ -694,89 +693,89 @@ function deploy_remaining_infrastructure() {
 function deploy_remaining_infrastructure_with_k8s_error_handling() {
   echo "🚀 Deploying Kubernetes cluster and Locust resources..."
   echo "   (This can take 10-15 minutes to complete)"
-  cd terraform
-
-  # Check if this is a re-deployment by looking for existing state file
-  local state_file
-  state_file="../${DEPLOYMENT_ID}_state.sh"
-  if [ -f "$state_file" ]; then
-    echo "  🔍 Found existing deployment state file"
-    # shellcheck disable=1090
-    source "$state_file"
-    
-    # If we have a cluster name from previous deployment, configure kubectl
-    if [[ -n "$DEPLOYED_CLUSTER_NAME" ]]; then
-      echo "  🔄 Configuring kubectl for existing cluster: $DEPLOYED_CLUSTER_NAME"
-      gcloud container clusters get-credentials "$DEPLOYED_CLUSTER_NAME" --project="${PROJECT_ID}" --location="${REGION}"
-    fi
-  fi
-
-  # Select workspace and apply Terraform
-  terraform workspace select "$DEPLOYMENT_ID"
-  echo "  🔄 Deploying GKE cluster and Locust in workspace: $DEPLOYMENT_ID"
-  echo "      (Progress will be shown below)"
-  
-  # Run terraform apply and capture output for error analysis
-  terraform_output_file="terraform_apply_output.log"
-  terraform apply --auto-approve 2>&1 | tee $terraform_output_file
-  TF_APPLY_EXIT_CODE=${PIPESTATUS[0]}
-  
-  # If the apply failed, check if it's a K8s connection issue
-  if [ "$TF_APPLY_EXIT_CODE" -ne 0 ]; then
-    echo "  ⚠️ Detected errors in terraform apply (exit code $TF_APPLY_EXIT_CODE)"
-    
-    # Check if there is a kubernetes connection error
-    if grep -q "dial tcp \[::1\]:80: connect: connection refused" $terraform_output_file || 
-       grep -q "transport: Error while dialing" $terraform_output_file; then
+  (
+    cd terraform
+    # Check if this is a re-deployment by looking for existing state file
+    local state_file
+    state_file="../${DEPLOYMENT_ID}_state.sh"
+    if [ -f "$state_file" ]; then
+      echo "  🔍 Found existing deployment state file"
+      # shellcheck disable=1090
+      source "$state_file"
       
-      echo "  🔍 Identified Kubernetes connection error - attempting automatic fix"
-      
-      # Try to get the cluster name even if apply failed
-      DEPLOYMENT_CLUSTER_NAME=$(terraform output -raw gke_cluster_name 2>/dev/null || true)
-      
-      if [[ -n "$DEPLOYMENT_CLUSTER_NAME" ]]; then
-        echo "  🔄 Configuring kubectl for cluster: $DEPLOYMENT_CLUSTER_NAME"
-        gcloud container clusters get-credentials "$DEPLOYMENT_CLUSTER_NAME" --project="${PROJECT_ID}" --location="${REGION}"
+      # If we have a cluster name from previous deployment, configure kubectl
+      if [[ -n "$DEPLOYED_CLUSTER_NAME" ]]; then
+        echo "  🔄 Configuring kubectl for existing cluster: $DEPLOYED_CLUSTER_NAME"
+        gcloud container clusters get-credentials "$DEPLOYED_CLUSTER_NAME" --project="${PROJECT_ID}" --location="${REGION}"
       fi
+    fi
+
+    # Select workspace and apply Terraform
+    terraform workspace select "$DEPLOYMENT_ID"
+    echo "  🔄 Deploying GKE cluster and Locust in workspace: $DEPLOYMENT_ID"
+    echo "      (Progress will be shown below)"
+    
+    # Run terraform apply and capture output for error analysis
+    terraform_output_file="terraform_apply_output.log"
+    terraform apply --auto-approve 2>&1 | tee $terraform_output_file
+    TF_APPLY_EXIT_CODE=${PIPESTATUS[0]}
+    
+    # If the apply failed, check if it's a K8s connection issue
+    if [ "$TF_APPLY_EXIT_CODE" -ne 0 ]; then
+      echo "  ⚠️ Detected errors in terraform apply (exit code $TF_APPLY_EXIT_CODE)"
       
-      # Remove problematic Kubernetes resources from state
-      echo "  🔄 Removing problematic Kubernetes resources from state..."
-      terraform state rm 'module.gke_autopilot.kubernetes_namespace.locust_namespace' || true
-      terraform state rm 'module.gke_autopilot.kubernetes_service_account.locust_service_account' || true
-      terraform state rm 'module.gke_autopilot.kubernetes_config_map.locust_config' || true
-      terraform state rm 'module.gke_autopilot.kubernetes_deployment.locust_master' || true
-      terraform state rm 'module.gke_autopilot.kubernetes_deployment.locust_worker' || true
-      terraform state rm 'module.gke_autopilot.kubernetes_service.locust_master' || true
-      terraform state rm 'module.gke_autopilot.kubernetes_service.locust_master_web' || true
-      terraform state rm 'module.gke_autopilot.kubernetes_horizontal_pod_autoscaler.locust_worker_autoscaler' || true
-      
-      # Try applying again
-      echo "  🔄 Retrying terraform apply..."
-      terraform apply --auto-approve
-      TF_RETRY_EXIT_CODE=$?
-      
-      if [ $TF_RETRY_EXIT_CODE -ne 0 ]; then
-        echo "  ❌ Error: Terraform apply still failed after fixing Kubernetes connection"
-        echo "     Exiting deployment process."
-        exit $TF_RETRY_EXIT_CODE
+      # Check if there is a kubernetes connection error
+      if grep -q "dial tcp \\[::1\\]:80: connect: connection refused" $terraform_output_file || 
+        grep -q "transport: Error while dialing" $terraform_output_file; then
+        
+        echo "  🔍 Identified Kubernetes connection error - attempting automatic fix"
+        
+        # Try to get the cluster name even if apply failed
+        DEPLOYMENT_CLUSTER_NAME=$(terraform output -raw gke_cluster_name 2>/dev/null || true)
+        
+        if [[ -n "$DEPLOYMENT_CLUSTER_NAME" ]]; then
+          echo "  🔄 Configuring kubectl for cluster: $DEPLOYMENT_CLUSTER_NAME"
+          gcloud container clusters get-credentials "$DEPLOYMENT_CLUSTER_NAME" --project="${PROJECT_ID}" --location="${REGION}"
+        fi
+        
+        # Remove problematic Kubernetes resources from state
+        echo "  🔄 Removing problematic Kubernetes resources from state..."
+        terraform state rm 'module.gke_autopilot.kubernetes_namespace.locust_namespace' || true
+        terraform state rm 'module.gke_autopilot.kubernetes_service_account.locust_service_account' || true
+        terraform state rm 'module.gke_autopilot.kubernetes_config_map.locust_config' || true
+        terraform state rm 'module.gke_autopilot.kubernetes_deployment.locust_master' || true
+        terraform state rm 'module.gke_autopilot.kubernetes_deployment.locust_worker' || true
+        terraform state rm 'module.gke_autopilot.kubernetes_service.locust_master' || true
+        terraform state rm 'module.gke_autopilot.kubernetes_service.locust_master_web' || true
+        terraform state rm 'module.gke_autopilot.kubernetes_horizontal_pod_autoscaler.locust_worker_autoscaler' || true
+        
+        # Try applying again
+        echo "  🔄 Retrying terraform apply..."
+        terraform apply --auto-approve
+        TF_RETRY_EXIT_CODE=$?
+        
+        if [ $TF_RETRY_EXIT_CODE -ne 0 ]; then
+          echo "  ❌ Error: Terraform apply still failed after fixing Kubernetes connection"
+          echo "     Exiting deployment process."
+          exit $TF_RETRY_EXIT_CODE
+        else
+          echo "  ✅ Terraform retry succeeded!"
+        fi
       else
-        echo "  ✅ Terraform retry succeeded!"
+        echo "  ❌ Error: Terraform apply failed with errors unrelated to Kubernetes connectivity"
+        echo "     Please check the error messages above for details."
+        exit "$TF_APPLY_EXIT_CODE"
       fi
-    else
-      echo "  ❌ Error: Terraform apply failed with errors unrelated to Kubernetes connectivity"
-      echo "     Please check the error messages above for details."
-      exit "$TF_APPLY_EXIT_CODE"
     fi
-  fi
-  
-  # Extract deployment outputs
-  echo "  🔍 Extracting deployment information..."
-  extract_deployment_outputs
-  
-  echo "  ✅ Infrastructure deployment process completed!"
-  # Clean up temporary file
-  rm -f $terraform_output_file
-  cd ..
+    
+    # Extract deployment outputs
+    echo "  🔍 Extracting deployment information..."
+    extract_deployment_outputs
+    
+    echo "  ✅ Infrastructure deployment process completed!"
+    # Clean up temporary file
+    rm -f $terraform_output_file
+  )
 }
 
 #------------------------------------------------------------------------------
@@ -866,9 +865,11 @@ function verify_deployment() {
   # Provide access instructions based on external IP preference
   if [[ "${TF_VAR_create_external_ip}" == "true" ]]; then
     # Get external IP from Terraform output
-    cd terraform
-    EXTERNAL_IP=$(terraform output -raw locust_external_ip 2>/dev/null)
-    cd ..
+    (
+      # Perform actions in /terraform within a subshell
+      cd terraform
+      EXTERNAL_IP=$(terraform output -raw locust_external_ip 2>/dev/null)
+    )
     
     if [ -n "$EXTERNAL_IP" ]; then
       echo

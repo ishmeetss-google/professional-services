@@ -58,41 +58,44 @@ fi
 
 # Terraform cleanup
 echo "Destroying Terraform resources..."
-cd terraform
+(
+  # Perform actions in /terraform within a subshell
+  cd terraform
 
-# Select the workspace
-if terraform workspace list | grep -q "$WORKSPACE_NAME"; then
-    terraform workspace select "$WORKSPACE_NAME"
-else
-  echo "Workspace $WORKSPACE_NAME does not exist, skipping terraform destroy"
-  exit 0
-fi
+  # Select the workspace
+  if terraform workspace list | grep -q "$WORKSPACE_NAME"; then
+      terraform workspace select "$WORKSPACE_NAME"
+  else
+    echo "Workspace $WORKSPACE_NAME does not exist, skipping terraform destroy"
+    exit 0
+  fi
 
-# Configure kubectl if we have a cluster name
-if [[ -n "$DEPLOYED_CLUSTER_NAME" ]]; then
-  echo "Configuring kubectl..."
-  gcloud container clusters get-credentials "$DEPLOYED_CLUSTER_NAME" --project="${PROJECT_ID}" --location="${REGION}" || echo "Warning: Unable to get GKE credentials, cluster may not exist"
-else
-  echo "Warning: Unable to get GKE cluster name, skipping kubectl configuration"
-fi
+  # Configure kubectl if we have a cluster name
+  if [[ -n "$DEPLOYED_CLUSTER_NAME" ]]; then
+    echo "Configuring kubectl..."
+    gcloud container clusters get-credentials "$DEPLOYED_CLUSTER_NAME" --project="${PROJECT_ID}" --location="${REGION}" || echo "Warning: Unable to get GKE credentials, cluster may not exist"
+  else
+    echo "Warning: Unable to get GKE cluster name, skipping kubectl configuration"
+  fi
 
-# Remove Kubernetes resources from Terraform state to avoid dependency issues
-terraform state rm 'module.gke_autopilot.kubernetes_namespace.locust_namespace' || true
-terraform state rm 'module.gke_autopilot.kubernetes_service_account.locust_service_account' || true
-terraform state rm 'module.gke_autopilot.kubernetes_config_map.locust_config' || true
-terraform state rm 'module.gke_autopilot.kubernetes_deployment.locust_master' || true
-terraform state rm 'module.gke_autopilot.kubernetes_deployment.locust_worker' || true
-terraform state rm 'module.gke_autopilot.kubernetes_service.locust_master' || true
-terraform state rm 'module.gke_autopilot.kubernetes_service.locust_master_web' || true
-terraform state rm 'module.gke_autopilot.kubernetes_horizontal_pod_autoscaler.locust_worker_autoscaler' || true
+  # Remove Kubernetes resources from Terraform state to avoid dependency issues
+  terraform state rm 'module.gke_autopilot.kubernetes_namespace.locust_namespace' || true
+  terraform state rm 'module.gke_autopilot.kubernetes_service_account.locust_service_account' || true
+  terraform state rm 'module.gke_autopilot.kubernetes_config_map.locust_config' || true
+  terraform state rm 'module.gke_autopilot.kubernetes_deployment.locust_master' || true
+  terraform state rm 'module.gke_autopilot.kubernetes_deployment.locust_worker' || true
+  terraform state rm 'module.gke_autopilot.kubernetes_service.locust_master' || true
+  terraform state rm 'module.gke_autopilot.kubernetes_service.locust_master_web' || true
+  terraform state rm 'module.gke_autopilot.kubernetes_horizontal_pod_autoscaler.locust_worker_autoscaler' || true
 
-# Standard destroy
-terraform destroy --auto-approve
+  # Standard destroy
+  terraform destroy --auto-approve
 
-# Delete the workspace
-terraform workspace select default
-terraform workspace delete --force "$WORKSPACE_NAME"
-cd ..
+  # Delete the workspace
+  terraform workspace select default
+  terraform workspace delete --force "$WORKSPACE_NAME"
+)
+
 
 # Deleting Locust config
 rm -rf config
