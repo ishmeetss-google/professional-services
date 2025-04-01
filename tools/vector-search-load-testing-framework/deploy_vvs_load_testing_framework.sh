@@ -865,6 +865,7 @@ function verify_deployment() {
   # Provide access instructions based on external IP preference
   if [[ "${TF_VAR_create_external_ip}" == "true" ]]; then
     # Get external IP from Terraform output
+    local EXTERNAL_IP
     (
       # Perform actions in /terraform within a subshell
       cd terraform
