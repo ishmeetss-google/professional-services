@@ -865,33 +865,31 @@ function verify_deployment() {
   # Provide access instructions based on external IP preference
   if [[ "${TF_VAR_create_external_ip}" == "true" ]]; then
     # Get external IP from Terraform output
-    local EXTERNAL_IP
     (
       # Perform actions in /terraform within a subshell
       cd terraform
       EXTERNAL_IP=$(terraform output -raw locust_external_ip 2>/dev/null)
-    )
-    
-    if [ -n "$EXTERNAL_IP" ]; then
-      echo
-      echo "🌐 ACCESS INFORMATION:"
-      echo "   Locust UI is available at: http://$EXTERNAL_IP:8089"
-      echo "   Open the above URL in your browser to access the load testing interface."
-    else
-      # Fallback to kubectl if terraform output fails
-      EXTERNAL_IP=$(kubectl -n "$LOCUST_NAMESPACE" get svc "${DEPLOYED_CLUSTER_SVC}" -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
       if [ -n "$EXTERNAL_IP" ]; then
         echo
         echo "🌐 ACCESS INFORMATION:"
         echo "   Locust UI is available at: http://$EXTERNAL_IP:8089"
         echo "   Open the above URL in your browser to access the load testing interface."
       else
-        echo
-        echo "⚠️ External IP was requested but could not be retrieved."
-        echo "   Please check the service status manually with:"
-        echo "   kubectl -n $LOCUST_NAMESPACE get svc ${DEPLOYED_CLUSTER_SVC}"
+        # Fallback to kubectl if terraform output fails
+        EXTERNAL_IP=$(kubectl -n "$LOCUST_NAMESPACE" get svc "${DEPLOYED_CLUSTER_SVC}" -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
+        if [ -n "$EXTERNAL_IP" ]; then
+          echo
+          echo "🌐 ACCESS INFORMATION:"
+          echo "   Locust UI is available at: http://$EXTERNAL_IP:8089"
+          echo "   Open the above URL in your browser to access the load testing interface."
+        else
+          echo
+          echo "⚠️ External IP was requested but could not be retrieved."
+          echo "   Please check the service status manually with:"
+          echo "   kubectl -n $LOCUST_NAMESPACE get svc ${DEPLOYED_CLUSTER_SVC}"
+        fi
       fi
-    fi
+    )
   else
     echo
     echo "🔒 ACCESS INFORMATION:"
